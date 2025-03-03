@@ -1,96 +1,295 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import dash
+from dash import dcc, html
+from dash.dependencies import Input, Output
+import datetime
 
-# Cargar el contenido del documento Word en la introducción
-intro_text = """
-## CONSTRUCCIÓN DEL NUEVO KPI: NET PROMOTER SCORE (NPS) AVANZADO PARA AXA
+# Crear datos de muestra
+np.random.seed(42)  # Para reproducibilidad
 
-### Introducción
+# Generación de fechas desde enero 2022 hasta julio 2025
+start_date = pd.to_datetime('2022-01-01')
+end_date = pd.to_datetime('2025-07-31')
+date_range = pd.date_range(start=start_date, end=end_date, freq='MS')
 
-Basándonos en el análisis previo del caso de AXA y en las recomendaciones consensuadas en el panel de expertos, desarrollaremos un nuevo KPI de Net Promoter Score (NPS) que supere las limitaciones tradicionales y se integre con los KPIs normales de AXA.
+# Generar datos de precisión con tendencia creciente pero realista
+precision_base = 65  # Comenzamos con 65% de precisión
+precision_values = []
 
-Este nuevo KPI responderá a tres perspectivas clave:
+for i, date in enumerate(date_range):
+    # Añadir tendencia creciente
+    trend = min(20, i * 0.3)  # Incremento gradual hasta 20%
+    
+    # Añadir variabilidad mensual 
+    seasonal = 2 * np.sin(i/12 * 2 * np.pi)
+    
+    # Añadir ruido aleatorio
+    noise = np.random.normal(0, 1.5)
+    
+    # Combinar componentes 
+    precision = precision_base + trend + seasonal + noise
+    
+    # Limitar al rango 60-90%
+    precision = max(60, min(90, precision))
+    
+    precision_values.append(precision)
 
-- **NPS Predictivo y Accionable (dNPS):** Enfocado en la anticipación en tiempo real mediante machine learning y datos de comportamiento.
-- **NPS de Confianza y Viralidad (tNPS + sNPS):** Reflejando la confianza en la aseguradora y su capacidad de generar recomendaciones orgánicas en redes sociales.
-- **NPS Personalizado por Sector:** Adaptando las métricas a seguros, banca o negocios digitales, según la naturaleza del cliente.
-
-### Evaluación del Modelo Holt-Winters
-
-| Variable   | MSE   | RMSE  | R²   |
-|------------|--------|--------|------|
-| **dNPS** (Dynamic NPS) | 262.92 | 16.21 | -2.57 |
-| **tNPS** (Trust-Based NPS) | 64.93  | 8.05  | -0.17 |
-| **sNPS** (Social NPS) | 155.60 | 12.47 | -0.30 |
-| **Smart_NPS** (Combinado) | 55.60  | 7.45  | -0.54 |
-
-🔹 **Interpretación de los Resultados:**
-- El modelo Holt-Winters predice bien el **tNPS y Smart_NPS**, pero tiene menor precisión para **dNPS y sNPS** (posiblemente por variabilidad en los datos sociales y en tiempo real).
-- El **R² negativo** indica que Holt-Winters no es el modelo óptimo para ciertas variables, por lo que podría mejorarse con SARIMA o Machine Learning para predecir tendencias más complejas.
-
-### Descripción de los Datos Necesarios y Cómo Obtenerlos
-
-| **Variable** | **Fuente de Datos** | **Método de Obtención** | **Transformaciones Necesarias** |
-|-------------|----------------------|------------------------|--------------------------------|
-| **dNPS** (Dynamic NPS) | Datos transaccionales, interacciones con atención al cliente, reclamos | Modelos de predicción con Machine Learning y análisis de tendencias | Normalización de datos, detección de anomalías |
-| **tNPS** (Trust-Based NPS) | Encuestas de satisfacción de largo plazo, tasas de retención | Cálculo de confianza basado en series temporales y satisfacción post-reclamación | Análisis de correlación con Net Retention Rate (NRR) |
-| **sNPS** (Social NPS) | Redes sociales, menciones en foros y reviews online | Análisis de sentimiento con NLP, tracking de menciones de marca | Clasificación de menciones en positivas, neutras y negativas |
-| **Smart_NPS** (NPS Combinado) | Integración de dNPS, tNPS y sNPS | Fórmula ponderada personalizada | Ajuste de pesos según la industria |
-"""
-
-# Generación de datos simulados
-np.random.seed(42)
-dates = pd.date_range(start="2022-01-01", periods=37, freq='M')
-dNPS = np.clip(np.random.normal(loc=60, scale=10, size=len(dates)), 40, 90)
-tNPS = np.clip(np.random.normal(loc=70, scale=8, size=len(dates)), 50, 95)
-sNPS = np.clip(np.random.normal(loc=55, scale=12, size=len(dates)), 30, 85)
-smart_NPS = (0.5 * dNPS) + (0.3 * tNPS) + (0.2 * sNPS)
-
-df_nps = pd.DataFrame({
-    'Fecha': dates,
-    'dNPS': dNPS,
-    'tNPS': tNPS,
-    'sNPS': sNPS,
-    'Smart_NPS': smart_NPS
+# Crear DataFrame
+df = pd.DataFrame({
+    'fecha': date_range,
+    'precision_modelo': precision_values
 })
 
-# Streamlit Dashboard
-st.set_page_config(page_title="Dashboard Smart NPS AXA", layout="wide")
-st.title("Dashboard Smart NPS AXA")
-st.markdown(intro_text)
+# Añadir columna para indicar datos históricos vs proyecciones
+df['tipo'] = 'Histórico'
+df.loc[df['fecha'] > pd.to_datetime('2025-02-01'), 'tipo'] = 'Proyección'
 
-# Generación de gráficos
-st.header("Estamos logrando satisfacer las necesidades de sus clientes?")
-fig1, ax1 = plt.subplots()
-ax1.plot(df_nps['Fecha'], df_nps['dNPS'], marker='o', linestyle='-', label="dNPS")
-ax1.set_xlabel("Fecha")
-ax1.set_ylabel("Puntuación")
-ax1.legend()
-st.pyplot(fig1)
+# Generar datos para Número de Alertas Generadas
+alertas_base = 80
+alertas_values = []
 
-st.header("Somos capaces de mantener la confianza de los clientes en el largo plazo?")
-fig2, ax2 = plt.subplots()
-ax2.plot(df_nps['Fecha'], df_nps['tNPS'], marker='s', linestyle='-', color='orange', label="tNPS")
-ax2.set_xlabel("Fecha")
-ax2.set_ylabel("Puntuación")
-ax2.legend()
-st.pyplot(fig2)
+for i, date in enumerate(date_range):
+    trend = min(100, i * 1.5)  # Crecimiento según se mejora el modelo
+    seasonal = 20 * np.sin(i/12 * 2 * np.pi)  # Estacionalidad anual
+    noise = np.random.normal(0, 10)
+    
+    alertas = alertas_base + trend + seasonal + noise
+    alertas = max(50, int(alertas))
+    
+    alertas_values.append(alertas)
 
-st.header("Tenemos fortaleza y buena percepción de los clientes en redes sociales?")
-fig3, ax3 = plt.subplots()
-ax3.plot(df_nps['Fecha'], df_nps['sNPS'], marker='d', linestyle='-', color='green', label="sNPS")
-ax3.set_xlabel("Fecha")
-ax3.set_ylabel("Puntuación")
-ax3.legend()
-st.pyplot(fig3)
+df['num_alertas'] = alertas_values
 
-st.header("Logramos satisfacer las necesidades del cliente, manteniendo su confianza en el largo plazo y con fuerte percepción en redes?")
-fig4, ax4 = plt.subplots()
-ax4.plot(df_nps['Fecha'], df_nps['Smart_NPS'], marker='x', linestyle='-', color='blue', label="Smart NPS")
-ax4.set_xlabel("Fecha")
-ax4.set_ylabel("Puntuación")
-ax4.legend()
-st.pyplot(fig4)
+# Generar datos para Días de Anticipación
+anticipacion_base = 10  # 10 días de anticipación inicial
+anticipacion_values = []
+
+for i, date in enumerate(date_range):
+    trend = min(15, i * 0.2)  # Mejora gradual
+    seasonal = 2 * np.sin(i/6 * 2 * np.pi)  # Ciclo semestral
+    noise = np.random.normal(0, 1)
+    
+    anticipacion = anticipacion_base + trend + seasonal + noise
+    anticipacion = max(5, min(30, anticipacion))
+    
+    anticipacion_values.append(anticipacion)
+
+df['dias_anticipacion'] = anticipacion_values
+
+# Crear aplicación Dash
+app = dash.Dash(__name__)
+
+app.layout = html.Div([
+    html.H1("Dashboard de Análisis Predictivo de Riesgos Emergentes", 
+            style={'textAlign': 'center', 'marginBottom': 30, 'marginTop': 20}),
+    
+    # Resumen OKR
+    html.Div([
+        html.H2("Objetivo del OKR:", style={'marginBottom': 10}),
+        html.P("Implementar un sistema de análisis predictivo para riesgos emergentes en los próximos 12 meses."),
+        
+        html.H3("Key Results (KR):", style={'marginBottom': 10, 'marginTop': 20}),
+        html.Ul([
+            html.Li("KR1: Desarrollar 5 modelos predictivos de riesgo basados en datos de clientes y mercados en 6 meses."),
+            html.Li("KR2: Aumentar la precisión de predicción de riesgos en un 20% en 12 meses."),
+            html.Li("KR3: Integrar el 100% de los datos históricos relevantes en el sistema de análisis predictivo.")
+        ])
+    ], style={'marginBottom': 30, 'padding': '20px', 'backgroundColor': '#f9f9f9', 'borderRadius': '10px'}),
+    
+    # Filtros y controles
+    html.Div([
+        html.H3("Filtros y Controles:", style={'marginBottom': 15}),
+        html.Div([
+            html.Label("Rango de Fechas:"),
+            dcc.DatePickerRange(
+                id='date-picker-range',
+                min_date_allowed=start_date,
+                max_date_allowed=end_date,
+                start_date=start_date,
+                end_date=end_date,
+                style={'marginBottom': 20}
+            ),
+        ]),
+        html.Div([
+            html.Label("Seleccionar Métricas:"),
+            dcc.Checklist(
+                id='metrics-checklist',
+                options=[
+                    {'label': 'Precisión del Modelo', 'value': 'precision'},
+                    {'label': 'Número de Alertas', 'value': 'alertas'},
+                    {'label': 'Días de Anticipación', 'value': 'anticipacion'}
+                ],
+                value=['precision', 'alertas', 'anticipacion'],
+                inline=True
+            ),
+        ]),
+    ], style={'marginBottom': 30, 'padding': '20px', 'backgroundColor': '#f9f9f9', 'borderRadius': '10px'}),
+    
+    # Gráficos
+    html.Div([
+        html.Div([
+            html.H3("Evolución de la Precisión del Modelo Predictivo", style={'textAlign': 'center'}),
+            dcc.Graph(id='precision-graph')
+        ], style={'marginBottom': 30}),
+        
+        html.Div([
+            html.H3("Número de Alertas Generadas por Mes", style={'textAlign': 'center'}),
+            dcc.Graph(id='alertas-graph')
+        ], style={'marginBottom': 30}),
+        
+        html.Div([
+            html.H3("Días de Anticipación en la Detección de Riesgos", style={'textAlign': 'center'}),
+            dcc.Graph(id='anticipacion-graph')
+        ]),
+    ]),
+    
+    # Resumen de acciones necesarias
+    html.Div([
+        html.H3("Acciones Necesarias:", style={'marginBottom': 15}),
+        html.Ul([
+            html.Li("Entrenar y mejorar los modelos predictivos con datos más recientes y relevantes."),
+            html.Li("Optimizar el pipeline de datos para mejorar la integración de fuentes externas (mercado, clima, geolocalización)."),
+            html.Li("Monitorear la precisión de los modelos cada 3 meses y ajustar los hiperparámetros según los resultados obtenidos.")
+        ])
+    ], style={'marginTop': 30, 'padding': '20px', 'backgroundColor': '#f9f9f9', 'borderRadius': '10px'}),
+])
+
+# Callbacks para actualizar los gráficos
+@app.callback(
+    [Output('precision-graph', 'figure'),
+     Output('alertas-graph', 'figure'),
+     Output('anticipacion-graph', 'figure')],
+    [Input('date-picker-range', 'start_date'),
+     Input('date-picker-range', 'end_date'),
+     Input('metrics-checklist', 'value')]
+)
+def update_graphs(start_date, end_date, selected_metrics):
+    # Filtrar los datos por fecha
+    filtered_df = df[(df['fecha'] >= start_date) & (df['fecha'] <= end_date)]
+    
+    # Gráfico de precisión del modelo
+    precision_fig = go.Figure()
+    
+    if 'precision' in selected_metrics:
+        # Añadir línea histórica
+        historical_df = filtered_df[filtered_df['tipo'] == 'Histórico']
+        precision_fig.add_trace(go.Scatter(
+            x=historical_df['fecha'],
+            y=historical_df['precision_modelo'],
+            mode='lines+markers',
+            name='Datos Históricos',
+            line=dict(color='blue', width=3),
+            marker=dict(size=8)
+        ))
+        
+        # Añadir línea de proyección
+        projection_df = filtered_df[filtered_df['tipo'] == 'Proyección']
+        precision_fig.add_trace(go.Scatter(
+            x=projection_df['fecha'],
+            y=projection_df['precision_modelo'],
+            mode='lines+markers',
+            name='Proyección',
+            line=dict(color='red', dash='dash', width=3),
+            marker=dict(size=8)
+        ))
+        
+        # Añadir línea de meta (85% de precisión)
+        precision_fig.add_trace(go.Scatter(
+            x=[filtered_df['fecha'].min(), filtered_df['fecha'].max()],
+            y=[85, 85],
+            mode='lines',
+            name='Meta (85%)',
+            line=dict(color='green', dash='dot', width=2)
+        ))
+    
+    precision_fig.update_layout(
+        xaxis_title='Fecha',
+        yaxis_title='Precisión del Modelo (%)',
+        yaxis=dict(range=[60, 90]),
+        hovermode='x unified',
+        legend=dict(y=0.99, x=0.01, orientation='h'),
+        margin=dict(l=20, r=20, t=20, b=20),
+    )
+    
+    # Gráfico de número de alertas
+    alertas_fig = go.Figure()
+    
+    if 'alertas' in selected_metrics:
+        # Añadir barras históricas
+        historical_df = filtered_df[filtered_df['tipo'] == 'Histórico']
+        alertas_fig.add_trace(go.Bar(
+            x=historical_df['fecha'],
+            y=historical_df['num_alertas'],
+            name='Alertas (Histórico)',
+            marker_color='royalblue'
+        ))
+        
+        # Añadir barras de proyección
+        projection_df = filtered_df[filtered_df['tipo'] == 'Proyección']
+        alertas_fig.add_trace(go.Bar(
+            x=projection_df['fecha'],
+            y=projection_df['num_alertas'],
+            name='Alertas (Proyección)',
+            marker_color='indianred'
+        ))
+    
+    alertas_fig.update_layout(
+        xaxis_title='Fecha',
+        yaxis_title='Número de Alertas',
+        hovermode='x unified',
+        legend=dict(y=0.99, x=0.01, orientation='h'),
+        margin=dict(l=20, r=20, t=20, b=20),
+    )
+    
+    # Gráfico de días de anticipación
+    anticipacion_fig = go.Figure()
+    
+    if 'anticipacion' in selected_metrics:
+        # Añadir línea histórica
+        historical_df = filtered_df[filtered_df['tipo'] == 'Histórico']
+        anticipacion_fig.add_trace(go.Scatter(
+            x=historical_df['fecha'],
+            y=historical_df['dias_anticipacion'],
+            mode='lines+markers',
+            name='Histórico',
+            line=dict(color='purple', width=3),
+            marker=dict(size=8)
+        ))
+        
+        # Añadir línea de proyección
+        projection_df = filtered_df[filtered_df['tipo'] == 'Proyección']
+        anticipacion_fig.add_trace(go.Scatter(
+            x=projection_df['fecha'],
+            y=projection_df['dias_anticipacion'],
+            mode='lines+markers',
+            name='Proyección',
+            line=dict(color='darkorange', dash='dash', width=3),
+            marker=dict(size=8)
+        ))
+        
+        # Añadir línea de meta (20 días de anticipación)
+        anticipacion_fig.add_trace(go.Scatter(
+            x=[filtered_df['fecha'].min(), filtered_df['fecha'].max()],
+            y=[20, 20],
+            mode='lines',
+            name='Meta (20 días)',
+            line=dict(color='green', dash='dot', width=2)
+        ))
+    
+    anticipacion_fig.update_layout(
+        xaxis_title='Fecha',
+        yaxis_title='Días de Anticipación',
+        hovermode='x unified',
+        legend=dict(y=0.99, x=0.01, orientation='h'),
+        margin=dict(l=20, r=20, t=20, b=20),
+    )
+    
+    return precision_fig, alertas_fig, anticipacion_fig
+
+# Ejecutar la aplicación
+if __name__ == '__main__':
+    app.run_server(debug=True)
