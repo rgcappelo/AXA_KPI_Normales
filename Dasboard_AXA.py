@@ -1,430 +1,390 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
+import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-import streamlit as st
+from plotly.subplots import make_subplots
 import datetime
 
-# Configuración de la página
+# Page configuration
 st.set_page_config(
-    page_title="Dashboard de Análisis Predictivo de Riesgos",
+    page_title="Análisis Predictivo de Riesgos Dashboard",
     page_icon="📊",
     layout="wide"
 )
 
-# Título principal
-st.title("Dashboard de Análisis Predictivo de Riesgos Emergentes")
+# Custom CSS
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 30px;
+        font-weight: bold;
+        color: #1E3A8A;
+        margin-bottom: 20px;
+    }
+    .sub-header {
+        font-size: 22px;
+        font-weight: bold;
+        color: #2563EB;
+        margin-top: 30px;
+    }
+    .metric-container {
+        background-color: #F3F4F6;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .info-box {
+        background-color: #EFF6FF;
+        border-left: 5px solid #2563EB;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# Crear datos de muestra
-@st.cache_data
-def generate_data():
-    np.random.seed(42)  # Para reproducibilidad
+# Dashboard title and description
+st.markdown('<div class="main-header">Dashboard de Análisis Predictivo de Riesgos</div>', unsafe_allow_html=True)
 
-    # Generación de fechas desde enero 2022 hasta julio 2025
-    start_date = pd.to_datetime('2022-01-01')
-    end_date = pd.to_datetime('2025-07-31')
-    date_range = pd.date_range(start=start_date, end=end_date, freq='MS')
-
-    # Generar datos de precisión con tendencia creciente pero realista
-    precision_base = 65  # Comenzamos con 65% de precisión
-    precision_values = []
-
-    for i, date in enumerate(date_range):
-        # Añadir tendencia creciente
-        trend = min(20, i * 0.3)  # Incremento gradual hasta 20%
-        
-        # Añadir variabilidad mensual 
-        seasonal = 2 * np.sin(i/12 * 2 * np.pi)
-        
-        # Añadir ruido aleatorio
-        noise = np.random.normal(0, 1.5)
-        
-        # Combinar componentes 
-        precision = precision_base + trend + seasonal + noise
-        
-        # Limitar al rango 60-90%
-        precision = max(60, min(90, precision))
-        
-        precision_values.append(precision)
-
-    # Crear DataFrame
-    df = pd.DataFrame({
-        'fecha': date_range,
-        'precision_modelo': precision_values
-    })
-
-    # Añadir columna para indicar datos históricos vs proyecciones
-    df['tipo'] = 'Histórico'
-    df.loc[df['fecha'] > pd.to_datetime('2025-02-01'), 'tipo'] = 'Proyección'
-
-    # Generar datos para Número de Alertas Generadas
-    alertas_base = 80
-    alertas_values = []
-
-    for i, date in enumerate(date_range):
-        trend = min(100, i * 1.5)  # Crecimiento según se mejora el modelo
-        seasonal = 20 * np.sin(i/12 * 2 * np.pi)  # Estacionalidad anual
-        noise = np.random.normal(0, 10)
-        
-        alertas = alertas_base + trend + seasonal + noise
-        alertas = max(50, int(alertas))
-        
-        alertas_values.append(alertas)
-
-    df['num_alertas'] = alertas_values
-
-    # Generar datos para Días de Anticipación
-    anticipacion_base = 10  # 10 días de anticipación inicial
-    anticipacion_values = []
-
-    for i, date in enumerate(date_range):
-        trend = min(15, i * 0.2)  # Mejora gradual
-        seasonal = 2 * np.sin(i/6 * 2 * np.pi)  # Ciclo semestral
-        noise = np.random.normal(0, 1)
-        
-        anticipacion = anticipacion_base + trend + seasonal + noise
-        anticipacion = max(5, min(30, anticipacion))
-        
-        anticipacion_values.append(anticipacion)
-
-    df['dias_anticipacion'] = anticipacion_values
-    
-    return df, start_date, end_date
-
-# Generar los datos
-df, start_date, end_date = generate_data()
-
-# Panel lateral con información del OKR y filtros
-with st.sidebar:
-    st.header("Objetivo del OKR")
-    st.write("Implementar un sistema de análisis predictivo para riesgos emergentes en los próximos 12 meses.")
-    
-    st.subheader("Key Results (KR)")
+# Agregar la información del OKR
+with st.expander("Objetivo y Key Results (OKR)", expanded=False):
     st.markdown("""
-    - **KR1:** Desarrollar 5 modelos predictivos de riesgo basados en datos de clientes y mercados en 6 meses.
-    - **KR2:** Aumentar la precisión de predicción de riesgos en un 20% en 12 meses.
-    - **KR3:** Integrar el 100% de los datos históricos relevantes en el sistema de análisis predictivo.
-    """)
+    **Objetivo:** Implementar un sistema de análisis predictivo para riesgos emergentes en los próximos 12 meses.
     
-    st.divider()
-    
-    # Filtros
-    st.subheader("Filtros")
-    
-    # Selector de fechas
-    date_range = st.date_input(
-        "Rango de fechas",
-        value=(start_date, end_date),
-        min_value=start_date,
-        max_value=end_date
-    )
-    
-    if len(date_range) == 2:
-        start_filter, end_filter = date_range
-    else:
-        start_filter, end_filter = start_date, end_date
-    
-    # Convertir a datetime para filtrar el dataframe
-    start_filter = pd.to_datetime(start_filter)
-    end_filter = pd.to_datetime(end_filter)
-    
-    # Selector de métricas
-    selected_metrics = st.multiselect(
-        "Seleccionar métricas",
-        ["Precisión del Modelo", "Número de Alertas", "Días de Anticipación"],
-        default=["Precisión del Modelo", "Número de Alertas", "Días de Anticipación"]
-    )
-    
-    # Mostrar acciones necesarias
-    st.divider()
-    st.subheader("Acciones Necesarias")
-    st.markdown("""
-    - Entrenar y mejorar los modelos predictivos con datos más recientes y relevantes.
-    - Optimizar el pipeline de datos para mejorar la integración de fuentes externas.
-    - Monitorear la precisión de los modelos cada 3 meses y ajustar los hiperparámetros.
+    **Key Results (KR):**
+    - KR1: Desarrollar 5 modelos predictivos de riesgo basados en datos de clientes y mercados en 6 meses.
+    - KR2: Aumentar la precisión de predicción de riesgos en un 20% en 12 meses.
+    - KR3: Integrar el 100% de los datos históricos relevantes en el sistema de análisis predictivo.
     """)
 
-# Filtrar los datos según el rango de fechas seleccionado
-filtered_df = df[(df['fecha'] >= start_filter) & (df['fecha'] <= end_filter)]
+# Crear datos de fecha
+fechas = pd.date_range(start='2022-01-01', end='2025-07-31', freq='MS').strftime('%Y-%m')
 
-# Dashboard principal dividido en pestañas
-tab1, tab2, tab3 = st.tabs(["📊 Resumen", "📈 Gráficos Detallados", "📋 Datos"])
+# Data preparation
+precision_modelo = [72.4, 69.3, 73.2, 77.6, 68.8, 70.5, 72.1, 74.3, 71.8, 75.6, 
+                    78.2, 76.4, 79.1, 77.8, 80.3, 81.5, 78.4, 82.2, 79.9, 84.3, 
+                    81.5, 85.1, 83.2, 86.4, 85.6, 84.2, 87.3, 86.1, 88.2, 87.9, 
+                    89.5, 88.3, 90.1, 89.7, 91.2, 90.5, 91.8, 92.0, 93.2, 93.5, 
+                    94.1, 94.8, 95.3]
 
+alertas_generadas = [10, 12, 15, 8, 17, 19, 14, 11, 13, 18, 16, 9, 14, 15, 21, 13, 20, 23, 12, 18, 
+                     17, 22, 16, 19, 24, 18, 25, 20, 22, 19, 23, 21, 24, 22, 26, 23, 25, 27, 29, 28, 
+                     30, 31, 32]
+
+dias_anticipacion = [12, 14, 11, 9, 16, 18, 13, 10, 15, 17, 14, 12, 19, 16, 21, 20, 18, 22, 17, 24, 
+                     21, 25, 22, 26, 23, 27, 24, 28, 25, 30, 26, 29, 27, 30, 28, 31, 29, 32, 33, 34, 
+                     35, 36, 37]
+
+# Create DataFrame
+df = pd.DataFrame({
+    'Fecha': fechas,
+    'Precisión del Modelo (%)': precision_modelo,
+    'Número de Alertas': alertas_generadas,
+    'Días de Anticipación': dias_anticipacion
+})
+
+# Convertir fechas a datetime para operaciones
+df['Fecha'] = pd.to_datetime(df['Fecha'])
+
+# Determinar límite de datos históricos vs. pronósticos (Febrero 2025)
+fecha_corte = pd.to_datetime('2025-02-01')
+df['Es Proyección'] = df['Fecha'] >= fecha_corte
+
+# Métricas resumidas
+col1, col2, col3 = st.columns(3)
+
+# Calcular valores actuales (últimos datos históricos)
+df_hist = df[~df['Es Proyección']]
+df_proj = df[df['Es Proyección']]
+
+precision_actual = df_hist['Precisión del Modelo (%)'].iloc[-1]
+precision_inicial = df_hist['Precisión del Modelo (%)'].iloc[0]
+mejora_precision = ((precision_actual - precision_inicial) / precision_inicial) * 100
+
+alertas_actual = df_hist['Número de Alertas'].iloc[-1]
+alertas_promedio = df_hist['Número de Alertas'].mean()
+cambio_alertas = ((alertas_actual - alertas_promedio) / alertas_promedio) * 100
+
+dias_actual = df_hist['Días de Anticipación'].iloc[-1]
+dias_inicial = df_hist['Días de Anticipación'].iloc[0]
+mejora_dias = ((dias_actual - dias_inicial) / dias_inicial) * 100
+
+# Mostrar KPIs
+with col1:
+    st.metric(
+        label="Precisión Actual del Modelo",
+        value=f"{precision_actual:.1f}%",
+        delta=f"{mejora_precision:.1f}% desde inicio"
+    )
+
+with col2:
+    st.metric(
+        label="Alertas Generadas (Último Mes)",
+        value=f"{alertas_actual}",
+        delta=f"{cambio_alertas:.1f}% vs promedio"
+    )
+
+with col3:
+    st.metric(
+        label="Días de Anticipación",
+        value=f"{dias_actual}",
+        delta=f"{mejora_dias:.1f}% desde inicio"
+    )
+
+# Tabs for different visualizations
+tab1, tab2, tab3 = st.tabs(["Precisión del Modelo", "Alertas Generadas", "Días de Anticipación"])
+
+# Tab 1: Precisión del Modelo
 with tab1:
-    # Mostrar KPIs en tarjetas en la parte superior
-    col1, col2, col3 = st.columns(3)
+    st.markdown('<div class="sub-header">Evolución de la Precisión del Modelo Predictivo</div>', unsafe_allow_html=True)
     
-    with col1:
-        current_precision = filtered_df['precision_modelo'].iloc[-1]
-        delta_precision = current_precision - filtered_df['precision_modelo'].iloc[0]
-        st.metric(
-            label="Precisión Actual del Modelo",
-            value=f"{current_precision:.1f}%",
-            delta=f"{delta_precision:.1f}%"
-        )
-    
-    with col2:
-        current_alerts = filtered_df['num_alertas'].iloc[-1]
-        avg_alerts = filtered_df['num_alertas'].mean()
-        st.metric(
-            label="Alertas Generadas (Último Mes)",
-            value=f"{int(current_alerts)}",
-            delta=f"{int(current_alerts - avg_alerts)} vs promedio"
-        )
-    
-    with col3:
-        current_days = filtered_df['dias_anticipacion'].iloc[-1]
-        delta_days = current_days - filtered_df['dias_anticipacion'].iloc[0]
-        st.metric(
-            label="Días de Anticipación",
-            value=f"{current_days:.1f} días",
-            delta=f"{delta_days:.1f} días"
-        )
-    
-    # Gráfico principal - Vista general
-    st.subheader("Vista General de Indicadores Clave")
-    
-    # Crear gráfico múltiple para comparar todas las métricas
-    fig = go.Figure()
-    
-    # Precisión del modelo (eje izquierdo)
-    fig.add_trace(go.Scatter(
-        x=filtered_df['fecha'],
-        y=filtered_df['precision_modelo'],
-        mode='lines',
-        name='Precisión del Modelo (%)',
-        line=dict(color='blue', width=3)
-    ))
-    
-    # Días de anticipación (eje izquierdo)
-    fig.add_trace(go.Scatter(
-        x=filtered_df['fecha'],
-        y=filtered_df['dias_anticipacion'],
-        mode='lines',
-        name='Días de Anticipación',
-        line=dict(color='purple', width=3)
-    ))
-    
-    # Número de alertas (eje derecho)
-    fig.add_trace(go.Scatter(
-        x=filtered_df['fecha'],
-        y=filtered_df['num_alertas'],
-        mode='lines',
-        name='Número de Alertas',
-        line=dict(color='orange', width=3),
-        yaxis='y2'
-    ))
-    
-    # Línea vertical para separar histórico y proyección
-    projection_date = pd.to_datetime('2025-02-01')
-    if projection_date >= start_filter and projection_date <= end_filter:
-        fig.add_vline(
-            x=projection_date, 
-            line_dash="dash", 
-            line_color="red",
-            annotation_text="Inicio Proyección",
-            annotation_position="top right"
-        )
-    
-    # Configuración de ejes y leyenda
-    fig.update_layout(
-        title='Evolución de las Métricas Clave',
-        xaxis_title='Fecha',
-        yaxis_title='Precisión (%) / Días',
-        yaxis2=dict(
-            title='Número de Alertas',
-            overlaying='y',
-            side='right'
-        ),
-        hovermode='x unified',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-with tab2:
-    # Mostrar gráficos detallados según las métricas seleccionadas
-    if "Precisión del Modelo" in selected_metrics:
-        st.subheader("Evolución de la Precisión del Modelo Predictivo")
+    with st.container():
+        st.markdown('<div class="info-box">Este indicador muestra la precisión de los modelos predictivos de riesgo a lo largo del tiempo. La línea roja discontinua marca el inicio de las proyecciones en febrero de 2025.</div>', unsafe_allow_html=True)
         
-        precision_fig = go.Figure()
+        fig = go.Figure()
         
-        # Añadir línea histórica
-        historical_df = filtered_df[filtered_df['tipo'] == 'Histórico']
-        if not historical_df.empty:
-            precision_fig.add_trace(go.Scatter(
-                x=historical_df['fecha'],
-                y=historical_df['precision_modelo'],
-                mode='lines+markers',
-                name='Datos Históricos',
-                line=dict(color='blue', width=3),
-                marker=dict(size=8)
-            ))
-        
-        # Añadir línea de proyección
-        projection_df = filtered_df[filtered_df['tipo'] == 'Proyección']
-        if not projection_df.empty:
-            precision_fig.add_trace(go.Scatter(
-                x=projection_df['fecha'],
-                y=projection_df['precision_modelo'],
-                mode='lines+markers',
-                name='Proyección',
-                line=dict(color='red', dash='dash', width=3),
-                marker=dict(size=8)
-            ))
-        
-        # Añadir línea de meta (85% de precisión)
-        precision_fig.add_trace(go.Scatter(
-            x=[filtered_df['fecha'].min(), filtered_df['fecha'].max()],
-            y=[85, 85],
-            mode='lines',
-            name='Meta (85%)',
-            line=dict(color='green', dash='dot', width=2)
+        # Datos históricos
+        fig.add_trace(go.Scatter(
+            x=df_hist['Fecha'],
+            y=df_hist['Precisión del Modelo (%)'],
+            mode='lines+markers',
+            name='Datos Históricos',
+            line=dict(color='#2563EB', width=3),
+            marker=dict(size=8, color='#2563EB')
         ))
         
-        precision_fig.update_layout(
-            xaxis_title='Fecha',
-            yaxis_title='Precisión del Modelo (%)',
-            yaxis=dict(range=[60, 90]),
-            hovermode='x unified'
+        # Datos proyectados
+        fig.add_trace(go.Scatter(
+            x=df_proj['Fecha'],
+            y=df_proj['Precisión del Modelo (%)'],
+            mode='lines+markers',
+            name='Proyecciones',
+            line=dict(color='#818CF8', width=3, dash='dot'),
+            marker=dict(size=8, color='#818CF8')
+        ))
+        
+        # Línea vertical que marca la fecha de corte
+        fig.add_shape(
+            type="line",
+            x0=fecha_corte,
+            y0=60,
+            x1=fecha_corte,
+            y1=100,
+            line=dict(color="Red", width=2, dash="dash"),
         )
         
-        st.plotly_chart(precision_fig, use_container_width=True)
+        # Meta del OKR (20% de mejora desde el inicio)
+        meta_precision = precision_inicial * 1.2
+        fig.add_shape(
+            type="line",
+            x0=df['Fecha'].min(),
+            y0=meta_precision,
+            x1=df['Fecha'].max(),
+            y1=meta_precision,
+            line=dict(color="green", width=2, dash="dash"),
+        )
         
-        # Explicación del gráfico de precisión
-        st.markdown("""
-        **Análisis de la Precisión del Modelo:**
-        - La precisión se calcula comparando las predicciones contra eventos reales
-        - Se mide utilizando métricas como Accuracy y ROC-AUC
-        - La meta es alcanzar un 85% de precisión para finales de año
-        - La línea roja punteada indica el inicio de las proyecciones (febrero 2025)
-        """)
+        # Anotación para la meta
+        fig.add_annotation(
+            x=df['Fecha'].max(),
+            y=meta_precision,
+            text="Meta OKR (+20%)",
+            showarrow=True,
+            arrowhead=1,
+            ax=50,
+            ay=-30,
+            font=dict(color="green", size=12),
+        )
+        
+        # Actualizar el diseño
+        fig.update_layout(
+            xaxis_title='Fecha',
+            yaxis_title='Precisión (%)',
+            yaxis_range=[60, 100],
+            hovermode='x unified',
+            height=500,
+            template='plotly_white',
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+
+# Tab 2: Alertas Generadas
+with tab2:
+    st.markdown('<div class="sub-header">Evolución de Alertas Generadas por el Sistema</div>', unsafe_allow_html=True)
     
-    if "Número de Alertas" in selected_metrics:
-        st.subheader("Número de Alertas Generadas por Mes")
+    with st.container():
+        st.markdown('<div class="info-box">Este indicador refleja la capacidad del modelo para identificar riesgos en tiempo real. Un aumento en las alertas puede significar una mayor sensibilidad del modelo.</div>', unsafe_allow_html=True)
         
-        alertas_fig = go.Figure()
+        fig = go.Figure()
         
-        # Añadir barras históricas
-        historical_df = filtered_df[filtered_df['tipo'] == 'Histórico']
-        if not historical_df.empty:
-            alertas_fig.add_trace(go.Bar(
-                x=historical_df['fecha'],
-                y=historical_df['num_alertas'],
-                name='Alertas (Histórico)',
-                marker_color='royalblue'
-            ))
+        # Datos históricos
+        fig.add_trace(go.Bar(
+            x=df_hist['Fecha'],
+            y=df_hist['Número de Alertas'],
+            name='Datos Históricos',
+            marker_color='#2563EB'
+        ))
         
-        # Añadir barras de proyección
-        projection_df = filtered_df[filtered_df['tipo'] == 'Proyección']
-        if not projection_df.empty:
-            alertas_fig.add_trace(go.Bar(
-                x=projection_df['fecha'],
-                y=projection_df['num_alertas'],
-                name='Alertas (Proyección)',
-                marker_color='indianred'
-            ))
+        # Datos proyectados
+        fig.add_trace(go.Bar(
+            x=df_proj['Fecha'],
+            y=df_proj['Número de Alertas'],
+            name='Proyecciones',
+            marker_color='#818CF8',
+            marker_pattern_shape="/"
+        ))
         
-        alertas_fig.update_layout(
+        # Línea vertical que marca la fecha de corte
+        fig.add_shape(
+            type="line",
+            x0=fecha_corte,
+            y0=0,
+            x1=fecha_corte,
+            y1=35,
+            line=dict(color="Red", width=2, dash="dash"),
+        )
+        
+        # Línea promedio
+        fig.add_trace(go.Scatter(
+            x=df['Fecha'],
+            y=[df_hist['Número de Alertas'].mean()] * len(df),
+            mode='lines',
+            name='Promedio Histórico',
+            line=dict(color='green', width=2, dash='dash')
+        ))
+        
+        # Actualizar el diseño
+        fig.update_layout(
             xaxis_title='Fecha',
             yaxis_title='Número de Alertas',
-            hovermode='x unified'
+            hovermode='x unified',
+            height=500,
+            template='plotly_white',
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         
-        st.plotly_chart(alertas_fig, use_container_width=True)
-        
-        # Estadísticas de alertas
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Promedio de alertas mensuales", f"{filtered_df['num_alertas'].mean():.1f}")
-        with col2:
-            st.metric("Tendencia anual", f"{(filtered_df['num_alertas'].iloc[-1] - filtered_df['num_alertas'].iloc[0]) / len(filtered_df) * 12:.1f} alertas/año")
+        st.plotly_chart(fig, use_container_width=True)
+
+# Tab 3: Días de Anticipación
+with tab3:
+    st.markdown('<div class="sub-header">Evolución del Tiempo Medio de Anticipación en la Detección de Riesgos</div>', unsafe_allow_html=True)
     
-    if "Días de Anticipación" in selected_metrics:
-        st.subheader("Días de Anticipación en la Detección de Riesgos")
+    with st.container():
+        st.markdown('<div class="info-box">Este indicador muestra la cantidad promedio de días que el modelo predice un evento de riesgo antes de que ocurra. Un mayor número de días permite tomar mejores decisiones estratégicas.</div>', unsafe_allow_html=True)
         
-        anticipacion_fig = go.Figure()
+        fig = go.Figure()
         
-        # Añadir línea histórica
-        historical_df = filtered_df[filtered_df['tipo'] == 'Histórico']
-        if not historical_df.empty:
-            anticipacion_fig.add_trace(go.Scatter(
-                x=historical_df['fecha'],
-                y=historical_df['dias_anticipacion'],
-                mode='lines+markers',
-                name='Histórico',
-                line=dict(color='purple', width=3),
-                marker=dict(size=8)
-            ))
-        
-        # Añadir línea de proyección
-        projection_df = filtered_df[filtered_df['tipo'] == 'Proyección']
-        if not projection_df.empty:
-            anticipacion_fig.add_trace(go.Scatter(
-                x=projection_df['fecha'],
-                y=projection_df['dias_anticipacion'],
-                mode='lines+markers',
-                name='Proyección',
-                line=dict(color='darkorange', dash='dash', width=3),
-                marker=dict(size=8)
-            ))
-        
-        # Añadir línea de meta (20 días de anticipación)
-        anticipacion_fig.add_trace(go.Scatter(
-            x=[filtered_df['fecha'].min(), filtered_df['fecha'].max()],
-            y=[20, 20],
-            mode='lines',
-            name='Meta (20 días)',
-            line=dict(color='green', dash='dot', width=2)
+        # Datos históricos
+        fig.add_trace(go.Scatter(
+            x=df_hist['Fecha'],
+            y=df_hist['Días de Anticipación'],
+            mode='lines+markers',
+            name='Datos Históricos',
+            line=dict(color='#2563EB', width=3),
+            marker=dict(size=8, color='#2563EB')
         ))
         
-        anticipacion_fig.update_layout(
-            xaxis_title='Fecha',
-            yaxis_title='Días de Anticipación',
-            hovermode='x unified'
+        # Datos proyectados
+        fig.add_trace(go.Scatter(
+            x=df_proj['Fecha'],
+            y=df_proj['Días de Anticipación'],
+            mode='lines+markers',
+            name='Proyecciones',
+            line=dict(color='#818CF8', width=3, dash='dot'),
+            marker=dict(size=8, color='#818CF8')
+        ))
+        
+        # Línea vertical que marca la fecha de corte
+        fig.add_shape(
+            type="line",
+            x0=fecha_corte,
+            y0=0,
+            x1=fecha_corte,
+            y1=40,
+            line=dict(color="Red", width=2, dash="dash"),
         )
         
-        st.plotly_chart(anticipacion_fig, use_container_width=True)
+        # Actualizar el diseño
+        fig.update_layout(
+            xaxis_title='Fecha',
+            yaxis_title='Días de Anticipación',
+            hovermode='x unified',
+            height=500,
+            template='plotly_white',
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
         
-        # Explicación de la métrica
-        st.info("""
-        **Importancia de los días de anticipación:**
-        Los días de anticipación representan cuánto tiempo antes de un evento de riesgo el modelo puede predecirlo con precisión.
-        Una mayor anticipación permite implementar medidas preventivas con más tiempo, reduciendo el impacto potencial del riesgo.
+        st.plotly_chart(fig, use_container_width=True)
+
+# Análisis y recomendaciones
+st.markdown('<div class="sub-header">Análisis y Recomendaciones</div>', unsafe_allow_html=True)
+
+with st.container():
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        ### Análisis de Tendencias
+        
+        - **Precisión del Modelo**: Ha mejorado significativamente desde el inicio, pasando de 72.4% a 90.5% actualmente, superando el objetivo del OKR de aumentar la precisión en un 20%.
+        
+        - **Alertas Generadas**: Se observa un aumento consistente en el número de alertas mensuales, lo que sugiere una mayor capacidad de detección del sistema.
+        
+        - **Días de Anticipación**: El tiempo de anticipación ha aumentado de 12 días a aproximadamente 30 días, lo que proporciona un margen de maniobra considerablemente mayor para la gestión de riesgos.
+        """)
+    
+    with col2:
+        st.markdown("""
+        ### Recomendaciones
+        
+        1. ✅ **Continuar mejorando los modelos**: Aunque ya se ha superado el objetivo de precisión, se recomienda seguir refinando los algoritmos para mantener el rendimiento frente a nuevos tipos de riesgos.
+        
+        2. ✅ **Optimizar infraestructura**: Implementar procesamiento en tiempo real para reducir aún más el tiempo de detección y respuesta.
+        
+        3. ✅ **Análisis trimestral**: Establecer revisiones trimestrales de sensibilidad del modelo para ajustar parámetros según las condiciones cambiantes del mercado.
         """)
 
-with tab3:
-    # Mostrar los datos en formato tabular
-    st.subheader("Datos del Análisis Predictivo")
+# Filtros interactivos
+with st.sidebar:
+    st.header("Filtros y Controles")
     
-    # Opciones para descargar los datos
-    csv = filtered_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Descargar datos como CSV",
-        data=csv,
-        file_name='datos_analisis_predictivo.csv',
-        mime='text/csv',
+    # Selector de rango de fechas
+    st.subheader("Rango de Fechas")
+    start_date = st.date_input(
+        "Fecha de inicio",
+        pd.to_datetime('2022-01-01').date(),
+        min_value=pd.to_datetime('2022-01-01').date(),
+        max_value=pd.to_datetime('2025-07-31').date()
     )
     
-    # Mostrar tabla con datos formateados
-    display_df = filtered_df.copy()
-    display_df['fecha'] = display_df['fecha'].dt.strftime('%Y-%m-%d')
-    display_df['precision_modelo'] = display_df['precision_modelo'].round(2).astype(str) + '%'
-    display_df['dias_anticipacion'] = display_df['dias_anticipacion'].round(1).astype(str) + ' días'
+    end_date = st.date_input(
+        "Fecha de fin",
+        pd.to_datetime('2025-07-31').date(),
+        min_value=pd.to_datetime('2022-01-01').date(),
+        max_value=pd.to_datetime('2025-07-31').date()
+    )
     
-    st.dataframe(display_df, use_container_width=True)
+    # Selector de vista (histórica, proyecciones, ambas)
+    st.subheader("Tipo de Datos")
+    vista_seleccionada = st.radio(
+        "Mostrar:",
+        ["Todos los datos", "Solo históricos", "Solo proyecciones"]
+    )
+    
+    # Casilla para mostrar/ocultar líneas de meta
+    mostrar_metas = st.checkbox("Mostrar líneas de meta", value=True)
+    
+    # Botón para descargar datos
+    st.subheader("Exportar Datos")
+    if st.download_button(
+        label="Descargar CSV",
+        data=df.to_csv(index=False).encode('utf-8'),
+        file_name="datos_predictivos_riesgos.csv",
+        mime="text/csv"
+    ):
+        st.success("Datos descargados correctamente")
 
-# Sección de ayuda desplegable
-with st.expander("ℹ️ Cómo usar este dashboard"):
-    st.markdown("""
-    **Instrucciones:**
-    1. **Filtros**: Use el panel lateral para seleccionar el rango de fechas y las métricas que desea visualizar.
-    2. **Pestañas**: Navegue entre las diferentes pestañas para acceder a distintas vistas:
-       - **Resumen**: Visión general de las métricas clave y KPIs actuales.
-       - **Gráficos Detallados**: Análisis individual de cada métrica seleccionada.
-       - **Datos**: Tabla con los datos completos y opción para descargar.
-    3. **Interactividad**: Puede interactuar con los gráficos:
-       - Pasar el cursor para ver detalles
-       - Hacer zoom en áreas específicas
-       - Descargar la vista actual como imagen
-    """)
+# Nota: En una aplicación real, estos filtros se conectarían a los gráficos para filtrar 
+# los datos según las selecciones del usuario
